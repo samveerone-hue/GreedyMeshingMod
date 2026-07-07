@@ -10,7 +10,11 @@ Instead of rendering each block face as a separate quad, Greedy Meshing scans ea
 
 - Automatic merging of identical opaque block faces
 - Custom terrain shaders for correct texture tiling
-- Sodium compatibility
+- **Aggressive Greedy (Absolute)** option. It merges across ambient-occlusion
+  boundaries for even fewer quads, at the cost of slightly coarser lighting
+- Sodium compatible
+- VulkanMod compatible (1.21-1.21.5, 1.21.9-1.21.11, 26.1-26.1.2. 1.21.6-1.21.8 not available, VulkanMod was never released for those)
+- Works with Minecraft 26.2's native experimental Vulkan rendering backend
 - F3 debug overlay showing quad reduction stats
 - Debug wireframe overlay (configurable via Mod Menu)
 - Split-screen comparison mode (greedy vs vanilla)
@@ -26,14 +30,14 @@ Instead of rendering each block face as a separate quad, Greedy Meshing scans ea
 | Minecraft | Loader | Status |
 |-----------|--------|--------|
 | 1.21 - 1.21.11 | Fabric | Supported |
-| 26.1 - 26.1.2 | Fabric | Supported |
+| 26.1 - 26.2 | Fabric | Supported |
 
 Built with [Stonecutter](https://github.com/stonecutter-versioning/stonecutter) for multi-version support.
 
 ## Dependencies
 
 - **Required:** [Fabric API](https://modrinth.com/mod/fabric-api)
-- **Optional:** [Cloth Config](https://modrinth.com/mod/cloth-config) + [Mod Menu](https://modrinth.com/mod/modmenu) (for in-game config screen), [Sodium](https://modrinth.com/mod/sodium) (compatible)
+- **Optional:** [Cloth Config](https://modrinth.com/mod/cloth-config) + [Mod Menu](https://modrinth.com/mod/modmenu) (for in-game config screen), [Sodium](https://modrinth.com/mod/sodium) (compatible), [VulkanMod](https://modrinth.com/mod/vulkanmod) (compatible, see Features above for exact version coverage)
 
 ## Installation
 
@@ -46,6 +50,7 @@ Built with [Stonecutter](https://github.com/stonecutter-versioning/stonecutter) 
 Open the config screen via Mod Menu, or edit `config/greedy_meshing.json`:
 
 - **Enabled** - Toggle greedy meshing on/off
+- **Aggressive Greedy (Absolute)** - Merge across ambient-occlusion boundaries for the largest possible quads (off by default)
 - **Debug Wireframe** - Show merged quad outlines
 - **Debug Comparison** - Split-screen greedy vs vanilla view
 - **Mesh Opacity** - Wireframe overlay opacity
