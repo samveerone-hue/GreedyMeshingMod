@@ -1,4 +1,4 @@
-package hi.sierra.greedy_meshing.mixin.client.sodium;
+    package hi.sierra.greedy_meshing.mixin.client.sodium;
 
 //? if SODIUM {
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -38,6 +38,7 @@ import net.minecraft.core.SectionPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import hi.sierra.greedy_meshing.GreedyConfig;
 import hi.sierra.greedy_meshing.GreedyEligibility;
 import hi.sierra.greedy_meshing.GreedyMesher;
 import hi.sierra.greedy_meshing.client.GreedyDebugStore;
@@ -441,12 +442,17 @@ public abstract class SodiumChunkBuilderMeshingTaskMixin {
                         samplePos.set(worldX + face.getStepX(), worldY + face.getStepY(), worldZ + face.getStepZ());
                         BlockState neighbor = world.getBlockState(samplePos);
                         //? if >=1.21.2 {
-                        /*if (Block.shouldRenderFace(state, neighbor, face)) {
-                        *///?} else {
-                        if (Block.shouldRenderFace(state, world, new BlockPos(worldX, worldY, worldZ), face, samplePos)) {
-                        //?}
+                        if (Block.shouldRenderFace(state, neighbor, face)) {
+                        //?} else {
+                        /*if (Block.shouldRenderFace(state, world, new BlockPos(worldX, worldY, worldZ), face, samplePos)) {
+                        *///?}
                             visibleFaces[face.ordinal()].set(idx);
-                            int aoKey = computeAoKey(world, samplePos, worldX, worldY, worldZ, face);
+                            // Aggressive ("absolute") greedy ignores the AO signature so same-block
+                            // faces merge into the largest possible quads; lighting is still sampled
+                            // per sub-quad.
+                            int aoKey = GreedyConfig.aggressiveGreedy()
+                                    ? 0
+                                    : computeAoKey(world, samplePos, worldX, worldY, worldZ, face);
                             faceMergeKeys[face.ordinal()][idx] = aoKey;
                         }
                     }
@@ -491,10 +497,10 @@ public abstract class SodiumChunkBuilderMeshingTaskMixin {
                     //? if UNOBFUSCATED {
                     /*&& neighbor.getLightDampening() != 0
                     *///?} else if >=1.21.2 {
-                    /*&& neighbor.getLightBlock() != 0
-                    *///?} else {
-                    && neighbor.getLightBlock(world, pos) != 0
-                    //?}
+                    && neighbor.getLightBlock() != 0
+                    //?} else {
+                    /*&& neighbor.getLightBlock(world, pos) != 0
+                    *///?}
             ) {
                 key |= (1 << i);
             }

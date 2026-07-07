@@ -7,6 +7,17 @@ stonecutter active "1.21.3" // [ACTIVE_VERSION]
 stonecutter parameters {
     constants.put("UNOBFUSCATED", node.metadata.project.startsWith("26."))
     constants.put("SODIUM", true)
+    // VulkanMod is an optional, opt-in renderer backend. Keep this set in sync with the versions
+    // whose gradle.properties define `deps.vulkanmod` (that property drives the build.gradle
+    // dependency + mixin-overlay gating; this constant drives the //? if VULKANMOD source guards).
+    // 0.5.x API: 1.21.2-1.21.5. 0.6.x API: 1.21, 1.21.1, 1.21.9-1.21.11.
+    // (1.21.6-1.21.8 absent — VulkanMod never released for them.)
+    // 26.1.x (unobfuscated line) supported via VulkanMod 0.6.8 = CEmnv55N (covers 26.1/26.1.1/26.1.2).
+    constants.put("VULKANMOD", node.metadata.project in setOf(
+        "1.21", "1.21.1", "1.21.2", "1.21.3", "1.21.4", "1.21.5",
+        "1.21.9", "1.21.10", "1.21.11",
+        "26.1", "26.1.1", "26.1.2"
+    ))
 }
 
 // Register version switch tasks

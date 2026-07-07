@@ -14,8 +14,14 @@ public abstract class ClientChunkCacheMixin {
     @Inject(method = "onLightUpdate", at = @At("TAIL"))
     private void greedyMeshing$markSectionDirtyOnLightUpdate(LightLayer layer, SectionPos sectionPos, CallbackInfo ci) {
         Minecraft mc = Minecraft.getInstance();
+        //? if >=26.2 {
+        /*if (mc.levelExtractor != null) {
+            mc.levelExtractor.setSectionDirtyWithNeighbors(sectionPos.x(), sectionPos.y(), sectionPos.z());
+        }
+        *///?} else {
         if (mc.levelRenderer != null) {
             mc.levelRenderer.setSectionDirtyWithNeighbors(sectionPos.x(), sectionPos.y(), sectionPos.z());
         }
+        //?}
     }
 }

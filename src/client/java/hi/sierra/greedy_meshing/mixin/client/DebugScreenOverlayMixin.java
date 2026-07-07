@@ -1,4 +1,4 @@
-package hi.sierra.greedy_meshing.mixin.client;
+        package hi.sierra.greedy_meshing.mixin.client;
 
 import hi.sierra.greedy_meshing.GreedyConfig;
 import hi.sierra.greedy_meshing.client.GreedyPerformanceStats;

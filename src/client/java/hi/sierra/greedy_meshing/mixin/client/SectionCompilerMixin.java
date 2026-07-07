@@ -373,12 +373,16 @@ public abstract class SectionCompilerMixin {
                 samplePos.set(worldX + face.getStepX(), worldY + face.getStepY(), worldZ + face.getStepZ());
                 BlockState neighbor = region.getBlockState(samplePos);
                 //? if >=1.21.2 {
-                /*if (Block.shouldRenderFace(state, neighbor, face)) {
-                *///?} else {
-                if (Block.shouldRenderFace(state, region, new BlockPos(worldX, worldY, worldZ), face, samplePos)) {
-                //?}
+                if (Block.shouldRenderFace(state, neighbor, face)) {
+                //?} else {
+                /*if (Block.shouldRenderFace(state, region, new BlockPos(worldX, worldY, worldZ), face, samplePos)) {
+                *///?}
                     visibleFaces[face.ordinal()].set(idx);
-                    int aoKey = computeAoKey(region, samplePos, worldX, worldY, worldZ, face);
+                    // Aggressive ("absolute") greedy ignores the AO signature so same-block faces
+                    // merge into the largest possible quads; lighting is still sampled per sub-quad.
+                    int aoKey = GreedyConfig.aggressiveGreedy()
+                            ? 0
+                            : computeAoKey(region, samplePos, worldX, worldY, worldZ, face);
                     faceMergeKeys[face.ordinal()][idx] = aoKey;
                 }
             }
@@ -425,10 +429,10 @@ public abstract class SectionCompilerMixin {
                     //? if UNOBFUSCATED {
                     /*&& neighbor.getLightDampening() != 0
                     *///?} else if >=1.21.2 {
-                    /*&& neighbor.getLightBlock() != 0
-                    *///?} else {
-                    && neighbor.getLightBlock(region, pos) != 0
-                    //?}
+                    && neighbor.getLightBlock() != 0
+                    //?} else {
+                    /*&& neighbor.getLightBlock(region, pos) != 0
+                    *///?}
             ) {
                 key |= (1 << i);
             }

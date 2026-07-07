@@ -1,11 +1,17 @@
 package hi.sierra.greedy_meshing.mixin.client.sodium;
 
 //? if SODIUM {
+//? if >=26.2 {
+/*import net.minecraft.client.renderer.ShaderManager;
+import com.mojang.blaze3d.shaders.ShaderType;
+import net.minecraft.resources.Identifier;
+*///?} else {
 import net.caffeinemc.mods.sodium.client.gl.shader.ShaderLoader;
 //? if >=1.21.11 {
 /*import net.minecraft.resources.Identifier;
 *///?} else {
 import net.minecraft.resources.ResourceLocation;
+//?}
 //?}
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -16,6 +22,35 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+//? if >=26.2 {
+/*// Sodium 0.9.x for 26.2 dropped its own GL shader-loading abstraction (ShaderLoader/GlShader are
+// gone — raw OpenGL access was removed) and builds a vanilla Blaze3D RenderPipeline instead, which
+// reads shader source through vanilla's own ShaderManager keyed on (Identifier, ShaderType). Sodium
+// registers ONE Identifier ("sodium:blocks/block_layer_opaque") for both stages, told apart by type.
+@Mixin(ShaderManager.class)
+public abstract class SodiumShaderLoaderMixin {
+
+    @Inject(method = "getShader", at = @At("RETURN"), cancellable = true, remap = false)
+    private void greedyMeshing$injectGreedyShaderCode(
+            Identifier identifier,
+            ShaderType type,
+            CallbackInfoReturnable<String> cir
+    ) {
+        if (!"sodium".equals(identifier.getNamespace()) || !"blocks/block_layer_opaque".equals(identifier.getPath())) {
+            return;
+        }
+        String source = cir.getReturnValue();
+        if (source == null) {
+            return;
+        }
+
+        if (type == ShaderType.VERTEX) {
+            cir.setReturnValue(greedyMeshing$injectVertexShader(source));
+        } else if (type == ShaderType.FRAGMENT) {
+            cir.setReturnValue(greedyMeshing$injectFragmentShader(source));
+        }
+    }
+*///?} else {
 @Mixin(ShaderLoader.class)
 public abstract class SodiumShaderLoaderMixin {
 
@@ -43,6 +78,7 @@ public abstract class SodiumShaderLoaderMixin {
             cir.setReturnValue(greedyMeshing$injectFragmentShader(source));
         }
     }
+    //?}
 
     @Unique
     private static String greedyMeshing$injectVertexShader(String source) {

@@ -20,13 +20,92 @@ import net.minecraft.world.phys.Vec3;
 import hi.sierra.greedy_meshing.GreedyConfig;
 import org.joml.Matrix4f;
 
+/**
+ * Greedy-mesh debug visualization, rendered as translucent FILLED quads (not line outlines).
+ *
+ * <p>Lines are deliberately avoided: VulkanMod 0.5.x's {@code rendertype_lines} shader is broken on
+ * MoltenVK (every line explodes into a giant screen-spanning triangle), so the outline overlay is
+ * unusable there. Filled quads go through ordinary {@code debugQuads} (POSITION_COLOR / QUADS /
+ * translucent) geometry that VulkanMod renders correctly on every version. Each filled quad is inset
+ * slightly so neighbours stay visually separated — for the comparison view the vanilla side is filled
+ * one cell per block (you see the per-block grid) while the greedy side fills the whole merged run.
+ */
 public final class GreedyWireframeRenderer {
     private static final int RADIUS = 1;
 
     private GreedyWireframeRenderer() {
     }
 
-    //? if UNOBFUSCATED {
+    //? if >=26.2 {
+    /*public static void render(LevelRenderContext context) {
+        boolean drawWireframe = GreedyConfig.debugWireframe();
+        boolean drawTriangles = GreedyConfig.debugTrianglesHud();
+        boolean drawComparison = GreedyConfig.debugComparison();
+        if (!GreedyRuntimeState.isRuntimeGreedyActive() || (!drawWireframe && !drawTriangles && !drawComparison) || context.submitNodeCollector() == null) {
+            return;
+        }
+
+        PoseStack poseStack = context.poseStack();
+        if (poseStack == null) {
+            return;
+        }
+
+        Vec3 cameraPos = context.levelState().cameraRenderState.pos;
+
+        poseStack.pushPose();
+        poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+
+        // Lines normally; filled quads only under VulkanMod <0.6 (its line shader is broken on MoltenVK).
+        boolean fills = GreedyDebugDraw.useFills();
+        GreedyDebugDraw.setCamera(cameraPos.x, cameraPos.y, cameraPos.z);
+        float alpha = Math.max(0.0f, Math.min(1.0f, GreedyConfig.meshOpacity()));
+        int sectionX = SectionPos.blockToSectionCoord(Mth.floor(cameraPos.x));
+        int sectionY = SectionPos.blockToSectionCoord(Mth.floor(cameraPos.y));
+        int sectionZ = SectionPos.blockToSectionCoord(Mth.floor(cameraPos.z));
+
+        net.minecraft.client.Camera camera = net.minecraft.client.Minecraft.getInstance().gameRenderer.mainCamera();
+        float yaw = (float) Math.toRadians(camera.yRot());
+        float rightX = (float) Math.cos(yaw);
+        float rightZ = (float) Math.sin(yaw);
+
+        java.util.List<GreedyDebugStore.DebugQuad> quads = GreedyDebugStore.getQuadsNear(sectionX, sectionY, sectionZ, RADIUS);
+        net.minecraft.client.renderer.rendertype.RenderType renderType = fills ? RenderTypes.debugQuads() : RenderTypes.lines();
+
+        // 26.2's rendering pipeline is submission-based: the VertexConsumer is only valid inside this
+        // deferred callback, so (unlike older versions) the per-quad draw loop must live in here rather
+        // than after an eagerly-acquired VertexConsumer.
+        context.submitNodeCollector().submitCustomGeometry(poseStack, renderType, (pose, consumer) -> {
+            Matrix4f matrixPose = pose.pose();
+            for (GreedyDebugStore.DebugQuad quad : quads) {
+                float ex = quad.x1() - quad.x0(), ey = quad.y1() - quad.y0(), ez = quad.z1() - quad.z0();
+                float fx = quad.x3() - quad.x0(), fy = quad.y3() - quad.y0(), fz = quad.z3() - quad.z0();
+
+                float cx = (quad.x0() + quad.x2()) * 0.5f - (float) cameraPos.x;
+                float cz = (quad.z0() + quad.z2()) * 0.5f - (float) cameraPos.z;
+                boolean isLeftHalf = (cx * rightX + cz * rightZ) < 0;
+
+                if (drawWireframe || drawComparison) {
+                    boolean showGreedyFill = drawWireframe && (!drawComparison || isLeftHalf);
+                    boolean showVanillaGrid = drawComparison && !isLeftHalf;
+
+                    if (showGreedyFill) {
+                        GreedyDebugDraw.outline(consumer, matrixPose, quad, fills, alpha, 0.0f, 1.0f, 0.0f);
+                    }
+                    if (showVanillaGrid) {
+                        int w = Math.max(1, Math.round((float) Math.sqrt(ex * ex + ey * ey + ez * ez)));
+                        int h = Math.max(1, Math.round((float) Math.sqrt(fx * fx + fy * fy + fz * fz)));
+                        GreedyDebugDraw.grid(consumer, matrixPose, quad, ex, ey, ez, fx, fy, fz, w, h, fills, alpha, 1.0f, 0.3f, 0.3f);
+                    }
+                }
+                if (drawTriangles && !drawWireframe && !drawComparison) {
+                    GreedyDebugDraw.triangles(consumer, matrixPose, quad, fills, alpha, 1.0f, 0.85f, 0.1f);
+                }
+            }
+        });
+
+        poseStack.popPose();
+        return;
+    *///?} else if UNOBFUSCATED {
     /*public static void render(LevelRenderContext context) {
         boolean drawWireframe = GreedyConfig.debugWireframe();
         boolean drawTriangles = GreedyConfig.debugTrianglesHud();
@@ -73,32 +152,36 @@ public final class GreedyWireframeRenderer {
         Vec3 cameraPos = context.camera().getPosition();
     //?}
 
+    //? if <26.2 {
         poseStack.pushPose();
         poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
 
         Matrix4f pose = poseStack.last().pose();
+        // Lines normally; filled quads only under VulkanMod <0.6 (its line shader is broken on MoltenVK).
+        boolean fills = GreedyDebugDraw.useFills();
         //? if UNOBFUSCATED {
-        /*VertexConsumer lines = context.bufferSource().getBuffer(RenderTypes.lines());
+        /*VertexConsumer consumer = fills ? context.bufferSource().getBuffer(RenderTypes.debugQuads()) : context.bufferSource().getBuffer(RenderTypes.lines());
         *///?} else if >=1.21.11 {
-        /*VertexConsumer lines = context.consumers().getBuffer(RenderTypes.lines());
+        /*VertexConsumer consumer = fills ? context.consumers().getBuffer(RenderTypes.debugQuads()) : context.consumers().getBuffer(RenderTypes.lines());
         *///?} else {
-        VertexConsumer lines = context.consumers().getBuffer(RenderType.lines());
+        VertexConsumer consumer = fills ? context.consumers().getBuffer(RenderType.debugQuads()) : context.consumers().getBuffer(RenderType.lines());
         //?}
+        GreedyDebugDraw.setCamera(cameraPos.x, cameraPos.y, cameraPos.z);
         float alpha = Math.max(0.0f, Math.min(1.0f, GreedyConfig.meshOpacity()));
         int sectionX = SectionPos.blockToSectionCoord(Mth.floor(cameraPos.x));
         int sectionY = SectionPos.blockToSectionCoord(Mth.floor(cameraPos.y));
         int sectionZ = SectionPos.blockToSectionCoord(Mth.floor(cameraPos.z));
 
-        // Camera right vector for determining left/right split
-        // Right = lookDir cross upDir. Use camera yaw to compute.
+        //? if >=26.2 {
+        /*net.minecraft.client.Camera camera = net.minecraft.client.Minecraft.getInstance().gameRenderer.mainCamera();
+        *///?} else {
         net.minecraft.client.Camera camera = net.minecraft.client.Minecraft.getInstance().gameRenderer.getMainCamera();
+        //?}
         //? if >=1.21.11 {
         /*float yaw = (float) Math.toRadians(camera.yRot());
         *///?} else {
         float yaw = (float) Math.toRadians(camera.getYRot());
         //?}
-        // Camera look direction (horizontal): (-sin(yaw), 0, cos(yaw))
-        // Camera right direction: (cos(yaw), 0, sin(yaw))
         float rightX = (float) Math.cos(yaw);
         float rightZ = (float) Math.sin(yaw);
 
@@ -106,71 +189,29 @@ public final class GreedyWireframeRenderer {
             float ex = quad.x1() - quad.x0(), ey = quad.y1() - quad.y0(), ez = quad.z1() - quad.z0();
             float fx = quad.x3() - quad.x0(), fy = quad.y3() - quad.y0(), fz = quad.z3() - quad.z0();
 
-            // Determine left/right by dotting quad center against camera right vector
             float cx = (quad.x0() + quad.x2()) * 0.5f - (float) cameraPos.x;
             float cz = (quad.z0() + quad.z2()) * 0.5f - (float) cameraPos.z;
             boolean isLeftHalf = (cx * rightX + cz * rightZ) < 0;
 
             if (drawWireframe || drawComparison) {
-                boolean showGreedyOutline = drawWireframe && (!drawComparison || isLeftHalf);
+                boolean showGreedyFill = drawWireframe && (!drawComparison || isLeftHalf);
                 boolean showVanillaGrid = drawComparison && !isLeftHalf;
 
-                if (showGreedyOutline) {
-                    drawEdge(lines, pose, quad.x0(), quad.y0(), quad.z0(), quad.x1(), quad.y1(), quad.z1(), alpha, 0.0f, 1.0f, 0.0f);
-                    drawEdge(lines, pose, quad.x1(), quad.y1(), quad.z1(), quad.x2(), quad.y2(), quad.z2(), alpha, 0.0f, 1.0f, 0.0f);
-                    drawEdge(lines, pose, quad.x2(), quad.y2(), quad.z2(), quad.x3(), quad.y3(), quad.z3(), alpha, 0.0f, 1.0f, 0.0f);
-                    drawEdge(lines, pose, quad.x3(), quad.y3(), quad.z3(), quad.x0(), quad.y0(), quad.z0(), alpha, 0.0f, 1.0f, 0.0f);
+                if (showGreedyFill) {
+                    GreedyDebugDraw.outline(consumer, pose, quad, fills, alpha, 0.0f, 1.0f, 0.0f);
                 }
                 if (showVanillaGrid) {
-                    float uLen = (float) Math.sqrt(ex * ex + ey * ey + ez * ez);
-                    float vLen = (float) Math.sqrt(fx * fx + fy * fy + fz * fz);
-                    int w = Math.max(1, Math.round(uLen));
-                    int h = Math.max(1, Math.round(vLen));
-                    drawEdge(lines, pose, quad.x0(), quad.y0(), quad.z0(), quad.x1(), quad.y1(), quad.z1(), alpha, 1.0f, 0.3f, 0.3f);
-                    drawEdge(lines, pose, quad.x1(), quad.y1(), quad.z1(), quad.x2(), quad.y2(), quad.z2(), alpha, 1.0f, 0.3f, 0.3f);
-                    drawEdge(lines, pose, quad.x2(), quad.y2(), quad.z2(), quad.x3(), quad.y3(), quad.z3(), alpha, 1.0f, 0.3f, 0.3f);
-                    drawEdge(lines, pose, quad.x3(), quad.y3(), quad.z3(), quad.x0(), quad.y0(), quad.z0(), alpha, 1.0f, 0.3f, 0.3f);
-                    for (int i = 1; i < w; i++) {
-                        float t = (float) i / w;
-                        float ax = quad.x0() + ex * t, ay = quad.y0() + ey * t, az = quad.z0() + ez * t;
-                        float bx = quad.x3() + ex * t, by = quad.y3() + ey * t, bz = quad.z3() + ez * t;
-                        drawEdge(lines, pose, ax, ay, az, bx, by, bz, alpha, 1.0f, 0.3f, 0.3f);
-                    }
-                    for (int j = 1; j < h; j++) {
-                        float t = (float) j / h;
-                        float ax = quad.x0() + fx * t, ay = quad.y0() + fy * t, az = quad.z0() + fz * t;
-                        float bx = quad.x1() + fx * t, by = quad.y1() + fy * t, bz = quad.z1() + fz * t;
-                        drawEdge(lines, pose, ax, ay, az, bx, by, bz, alpha, 1.0f, 0.3f, 0.3f);
-                    }
+                    int w = Math.max(1, Math.round((float) Math.sqrt(ex * ex + ey * ey + ez * ez)));
+                    int h = Math.max(1, Math.round((float) Math.sqrt(fx * fx + fy * fy + fz * fz)));
+                    GreedyDebugDraw.grid(consumer, pose, quad, ex, ey, ez, fx, fy, fz, w, h, fills, alpha, 1.0f, 0.3f, 0.3f);
                 }
             }
-            if (drawTriangles) {
-                drawEdge(lines, pose, quad.x0(), quad.y0(), quad.z0(), quad.x2(), quad.y2(), quad.z2(), alpha, 1.0f, 0.85f, 0.1f);
+            if (drawTriangles && !drawWireframe && !drawComparison) {
+                GreedyDebugDraw.triangles(consumer, pose, quad, fills, alpha, 1.0f, 0.85f, 0.1f);
             }
         }
 
         poseStack.popPose();
-    }
-
-    private static void drawEdge(VertexConsumer lines, Matrix4f pose,
-                                 float ax, float ay, float az,
-                                 float bx, float by, float bz,
-                                 float alpha,
-                                 float red, float green, float blue) {
-        if (alpha <= 0.0f) {
-            return;
-        }
-
-        float nx = bx - ax, ny = by - ay, nz = bz - az;
-        float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
-        if (len > 1.0e-5f) { nx /= len; ny /= len; nz /= len; }
-
-        //? if >=1.21.11 {
-        /*lines.addVertex(pose, ax, ay, az).setColor(red, green, blue, alpha).setNormal(nx, ny, nz).setLineWidth(1.0f);
-        lines.addVertex(pose, bx, by, bz).setColor(red, green, blue, alpha).setNormal(nx, ny, nz).setLineWidth(1.0f);
-        *///?} else {
-        lines.addVertex(pose, ax, ay, az).setColor(red, green, blue, alpha).setNormal(nx, ny, nz);
-        lines.addVertex(pose, bx, by, bz).setColor(red, green, blue, alpha).setNormal(nx, ny, nz);
-        //?}
+    //?}
     }
 }

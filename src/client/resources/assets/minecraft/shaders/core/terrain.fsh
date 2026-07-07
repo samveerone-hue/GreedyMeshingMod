@@ -15,14 +15,14 @@ in float greedyFaceId;
 
 out vec4 fragColor;
 
-vec4 sampleNearest(sampler2D sampler, vec2 uv, vec2 pixelSize, vec2 du, vec2 dv, vec2 texelScreenSize) {
+vec4 sampleNearest(sampler2D tex, vec2 uv, vec2 pixelSize, vec2 du, vec2 dv, vec2 texelScreenSize) {
     vec2 uvTexelCoords = uv / pixelSize;
     vec2 texelCenter = round(uvTexelCoords) - 0.5f;
     vec2 texelOffset = uvTexelCoords - texelCenter;
     texelOffset = (texelOffset - 0.5f) * pixelSize / texelScreenSize + 0.5f;
     texelOffset = clamp(texelOffset, 0.0f, 1.0f);
     uv = (texelCenter + texelOffset) * pixelSize;
-    return textureGrad(sampler, uv, du, dv);
+    return textureGrad(tex, uv, du, dv);
 }
 
 vec4 sampleNearest(sampler2D source, vec2 uv, vec2 pixelSize) {

@@ -20,9 +20,15 @@ public final class GreedyDebugHudRenderer {
     public static void render(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
     //?}
         Minecraft mc = Minecraft.getInstance();
+        //? if >=26.2 {
+        /*if (mc.level == null || mc.player == null || mc.gui.hud.isHidden()) {
+            return;
+        }
+        *///?} else {
         if (mc.level == null || mc.player == null || mc.options.hideGui) {
             return;
         }
+        //?}
 
         if (!GreedyConfig.debugComparison()) {
             return;

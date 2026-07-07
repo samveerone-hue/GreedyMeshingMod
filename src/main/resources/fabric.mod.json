@@ -4,8 +4,14 @@
   "version": "${version}",
   "name": "Greedy Meshing",
   "description": "Chunk rendering optimization via greedy meshing for opaque full cubes.",
-  "authors": ["Sierra"],
-  "contact": {},
+  "authors": [
+    "Sierra"
+  ],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/yOnoFrVo",
+    "sources": "https://github.com/programmer1o1/GreedyMeshingMod",
+    "issues": "https://github.com/programmer1o1/GreedyMeshingMod/issues"
+  },
   "license": "MIT",
   "icon": "assets/greedy_meshing/icon.png",
   "environment": "client",
@@ -27,6 +33,10 @@
     },
     {
       "config": "greedy_meshing.sodium.mixins.json",
+      "environment": "client"
+    },
+    {
+      "config": "greedy_meshing.vulkan.mixins.json",
       "environment": "client"
     }
   ],

@@ -63,15 +63,56 @@ dependencies {
         api "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
         api "com.terraformersmc:modmenu:${project.modmenu_version}"
 
+        def vulkanmodVersion = findProperty('deps.vulkanmod')
         def sodiumVersion = findProperty('deps.sodium')
         def sodiumMaven = findProperty('deps.sodium_maven') ?: 'caffeinemc'
         if (sodiumVersion) {
-            if (sodiumMaven == 'modrinth') {
-                compileOnly "maven.modrinth:sodium:${sodiumVersion}"
-                runtimeOnly "maven.modrinth:sodium:${sodiumVersion}"
-            } else {
-                compileOnly "net.caffeinemc:sodium-fabric:${sodiumVersion}"
-                runtimeOnly "net.caffeinemc:sodium-fabric:${sodiumVersion}"
+            def sodiumDep = sodiumMaven == 'modrinth'
+                    ? "maven.modrinth:sodium:${sodiumVersion}"
+                    : "net.caffeinemc:sodium-fabric:${sodiumVersion}"
+            // Sodium is needed at compile time (the Sodium mixins reference its classes), but
+            // VulkanMod and Sodium are mutually exclusive renderers — keep Sodium off the runtime
+            // when VulkanMod is active for this version.
+            compileOnly sodiumDep
+            if (!vulkanmodVersion) {
+                runtimeOnly sodiumDep
+            }
+        }
+
+        // VulkanMod on the unobfuscated (26.1+) line. Unlike the obfuscated branch this uses plain
+        // compileOnly/runtimeOnly (no remap; the jar is already in the right namespace).
+        if (vulkanmodVersion) {
+            compileOnly("maven.modrinth:vulkanmod:${vulkanmodVersion}") {
+                transitive = false
+            }
+            runtimeOnly("maven.modrinth:vulkanmod:${vulkanmodVersion}") {
+                transitive = false
+            }
+            // VulkanMod's LWJGL modules (vulkan/vma/shaderc) aren't bundled by Minecraft. Must match
+            // Minecraft's LWJGL version — 26.1 ships 3.4.1 (the older line used 3.3.3).
+            def lwjglVulkan = findProperty('deps.lwjgl_vulkan') ?: '3.4.1'
+            def lwjglModules = ['lwjgl-vulkan', 'lwjgl-vma', 'lwjgl-shaderc']
+            lwjglModules.each { m -> runtimeOnly "org.lwjgl:${m}:${lwjglVulkan}" }
+
+            def osName = System.getProperty('os.name').toLowerCase()
+            def osArch = System.getProperty('os.arch').toLowerCase()
+            def arm = osArch in ['aarch64', 'arm64']
+            def lwjglNatives = null
+            if (osName.contains('mac')) {
+                lwjglNatives = arm ? 'natives-macos-arm64' : 'natives-macos'
+            } else if (osName.contains('win')) {
+                lwjglNatives = 'natives-windows'
+            } else if (osName.contains('nux') || osName.contains('nix')) {
+                lwjglNatives = arm ? 'natives-linux-arm64' : 'natives-linux'
+            }
+            if (lwjglNatives != null) {
+                // The vulkan natives jar exists ONLY for macOS (bundles libMoltenVK.dylib — no system
+                // Vulkan loader there); Windows/Linux use the system libvulkan, so skip it off-mac.
+                lwjglModules.each { m ->
+                    if (m != 'lwjgl-vulkan' || osName.contains('mac')) {
+                        runtimeOnly "org.lwjgl:${m}:${lwjglVulkan}:${lwjglNatives}"
+                    }
+                }
             }
         }
     } else {
@@ -80,20 +121,69 @@ dependencies {
         modApi "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
         modApi "com.terraformersmc:modmenu:${project.modmenu_version}"
 
+        def vulkanmodVersion = findProperty('deps.vulkanmod')
         def sodiumVersion = findProperty('deps.sodium')
         def sodiumMaven = findProperty('deps.sodium_maven') ?: 'caffeinemc'
         if (sodiumVersion) {
-            if (sodiumMaven == 'modrinth') {
-                modCompileOnly "maven.modrinth:sodium:${sodiumVersion}"
-                modRuntimeOnly "maven.modrinth:sodium:${sodiumVersion}"
-            } else {
-                modCompileOnly "net.caffeinemc:sodium-fabric:${sodiumVersion}"
-                modRuntimeOnly "net.caffeinemc:sodium-fabric:${sodiumVersion}"
+            def sodiumDep = sodiumMaven == 'modrinth'
+                    ? "maven.modrinth:sodium:${sodiumVersion}"
+                    : "net.caffeinemc:sodium-fabric:${sodiumVersion}"
+            // Sodium is always needed at compile time (the Sodium mixins reference its classes).
+            modCompileOnly sodiumDep
+            // ...but Sodium and VulkanMod are mutually exclusive renderers and refuse to load
+            // together, so keep Sodium off the runtime when testing the VulkanMod path.
+            if (!vulkanmodVersion) {
+                modRuntimeOnly sodiumDep
+            }
+        }
+
+        // VulkanMod: optional alternate renderer backend. Modrinth maven only.
+        // NOTE: pin by the unique Modrinth version ID (not the version_number), because several
+        // VulkanMod releases share a number (e.g. 0.5.3 exists for both 1.21-1.21.1 and 1.21.2-1.21.3)
+        // and the bare number resolves ambiguously to the wrong Minecraft build.
+        if (vulkanmodVersion) {
+            modCompileOnly("maven.modrinth:vulkanmod:${vulkanmodVersion}") {
+                transitive = false
+            }
+            modLocalRuntime("maven.modrinth:vulkanmod:${vulkanmodVersion}") {
+                transitive = false
+            }
+            // VulkanMod uses LWJGL modules that Minecraft's bundled LWJGL doesn't ship: vulkan
+            // (org.lwjgl.vulkan.*), vma (Vulkan Memory Allocator) and shaderc. VulkanMod normally
+            // JiJ-bundles them, but transitive=false above strips them, so add them explicitly.
+            // Must match Minecraft's LWJGL version (1.21.3 -> 3.3.3).
+            def lwjglVulkan = findProperty('deps.lwjgl_vulkan') ?: '3.3.3'
+            def lwjglModules = ['lwjgl-vulkan', 'lwjgl-vma', 'lwjgl-shaderc']
+            lwjglModules.each { m -> localRuntime "org.lwjgl:${m}:${lwjglVulkan}" }
+
+            // Platform natives. Resolve the LWJGL classifier for this machine.
+            def osName = System.getProperty('os.name').toLowerCase()
+            def osArch = System.getProperty('os.arch').toLowerCase()
+            def arm = osArch in ['aarch64', 'arm64']
+            def lwjglNatives = null
+            if (osName.contains('mac')) {
+                lwjglNatives = arm ? 'natives-macos-arm64' : 'natives-macos'
+            } else if (osName.contains('win')) {
+                lwjglNatives = 'natives-windows'
+            } else if (osName.contains('nux') || osName.contains('nix')) {
+                lwjglNatives = arm ? 'natives-linux-arm64' : 'natives-linux'
+            }
+            if (lwjglNatives != null) {
+                // vma & shaderc have natives on every platform. The vulkan natives jar exists ONLY
+                // for macOS (it bundles libMoltenVK.dylib — there's no system Vulkan loader there);
+                // Windows/Linux use the system libvulkan, so skip the vulkan classifier off-mac.
+                lwjglModules.each { m ->
+                    if (m != 'lwjgl-vulkan' || osName.contains('mac')) {
+                        localRuntime "org.lwjgl:${m}:${lwjglVulkan}:${lwjglNatives}"
+                    }
+                }
             }
         }
 
         def irisVersion = findProperty('deps.iris')
-        if (irisVersion) {
+        // Iris and VulkanMod both replace the rendering pipeline and refuse to load together.
+        // When VulkanMod is set for a version, skip Iris at runtime so runClient works.
+        if (irisVersion && !vulkanmodVersion) {
             modLocalRuntime("maven.modrinth:iris:${irisVersion}") {
                 transitive = false
             }
@@ -110,6 +200,14 @@ dependencies {
         def moonlightVersion = findProperty('deps.moonlight')
         if (moonlightVersion) {
             modLocalRuntime "maven.modrinth:moonlight:${moonlightVersion}"
+        }
+
+        // BetterGrassify: fancy/connected-grass mod, used to test greedy-meshing compatibility
+        // (see GreedyEligibility — grass-spread blocks are excluded from meshing when it's loaded).
+        // Pin by Modrinth version ID; the bare version_number resolves per Minecraft build.
+        def betterGrassifyVersion = findProperty('deps.bettergrassify')
+        if (betterGrassifyVersion) {
+            modLocalRuntime "maven.modrinth:bettergrassify:${betterGrassifyVersion}"
         }
     }
 }
@@ -169,6 +267,12 @@ processResources {
 
 }
 
+// Client resources also use a version overlay (versions/<ver>/src/client/resources prepended to
+// srcDirs), so the version-specific copy must win over the base — e.g. greedy_meshing.vulkan.mixins.json.
+processClientResources {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 // 1.21.9-1.21.10: WorldRenderEvents removed from Fabric API (re-added in 1.21.11)
 def mcVer = findProperty('minecraft_version') ?: ''
 if (mcVer == '1.21.9' || mcVer == '1.21.10') {
@@ -184,6 +288,19 @@ if (!hasSodium) {
     }
     sourceSets.client.java {
         exclude '**/sodium/**'
+    }
+}
+
+// VulkanMod is opt-in per version. The base greedy_meshing.vulkan.mixins.json ships an
+// EMPTY client list, so fabric.mod.json can reference it on every version without a missing
+// config. Versions that set `deps.vulkanmod` override it via versions/<ver>/src/client/resources/
+// with the real mixin class list (the version resource overlay wins under EXCLUDE).
+def hasVulkanmod = findProperty('deps.vulkanmod')?.trim()
+if (!hasVulkanmod) {
+    // Don't compile the VulkanMod mixin sources against an absent VulkanMod API.
+    // (The //? if VULKANMOD stonecutter guard also neutralizes them; this is belt-and-suspenders.)
+    sourceSets.client.java {
+        exclude '**/vulkan/**'
     }
 }
 

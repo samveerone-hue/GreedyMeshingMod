@@ -10,8 +10,10 @@ import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 //?}
 //? if UNOBFUSCATED {
 /*import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
-*///?} else if <1.21.9 {
-/*import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+*///?} else if <1.21.2 {
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+//?} else if >=1.21.11 {
+/*import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 *///?}
 
 import net.minecraft.client.Minecraft;
@@ -39,10 +41,15 @@ public final class GreedyMeshingClient implements ClientModInitializer {
     public void onInitializeClient() {
         //? if UNOBFUSCATED {
         /*LevelRenderEvents.AFTER_SOLID_FEATURES.register(GreedyWireframeRenderer::render);
-        *///?} else if <1.21.9 {
+        *///?} else if <1.21.2 {
+        WorldRenderEvents.AFTER_ENTITIES.register(GreedyWireframeRenderer::render);
+        //?} else if >=1.21.11 {
         /*WorldRenderEvents.AFTER_ENTITIES.register(GreedyWireframeRenderer::render);
         *///?}
-        // Note: wireframe debug not available on 1.21.9-1.21.10 (WorldRenderEvents removed, FabricRenderPipeline needed)
+        // Wireframe overlay paths: 1.21/1.21.1 -> WorldRenderEvents (old package); 1.21.2-1.21.10 ->
+        // DebugRenderer.render TAIL hook (DebugRendererMixin), since WorldRenderEvents shimmers under
+        // VulkanMod 0.5.x and DebugRenderer.render was the only stable hook there; 1.21.11 -> the new
+        // .world.WorldRenderEvents (vanilla removed DebugRenderer.render); 26.x -> LevelRenderEvents.
         //? if >=1.21.9 {
         /*HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT, DEBUG_HUD_ID, GreedyDebugHudRenderer::render);
         *///?} else {
@@ -74,11 +81,20 @@ public final class GreedyMeshingClient implements ClientModInitializer {
 
         boolean aoChanged = !java.util.Objects.equals(lastAmbientOcclusion, ambientOcclusion);
         boolean gammaChanged = !java.util.Objects.equals(lastGamma, gamma);
-        if ((aoChanged || gammaChanged) && mc.levelRenderer != null) {
-            lastAmbientOcclusion = ambientOcclusion;
-            lastGamma = gamma;
+        if (!aoChanged && !gammaChanged) {
+            return;
+        }
+        lastAmbientOcclusion = ambientOcclusion;
+        lastGamma = gamma;
+        //? if >=26.2 {
+        /*if (mc.levelExtractor != null) {
+            mc.levelExtractor.allChanged();
+        }
+        *///?} else {
+        if (mc.levelRenderer != null) {
             mc.levelRenderer.allChanged();
         }
+        //?}
     }
 
     private static final ConcurrentHashMap<String, Method[]> METHOD_CACHE = new ConcurrentHashMap<>();

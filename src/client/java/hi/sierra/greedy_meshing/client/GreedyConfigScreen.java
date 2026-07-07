@@ -20,9 +20,15 @@ public final class GreedyConfigScreen {
                 .setSavingRunnable(() -> {
                     GreedyConfig.apply(draft);
                     Minecraft mc = Minecraft.getInstance();
+                    //? if >=26.2 {
+                    /*if (mc.levelExtractor != null) {
+                        mc.levelExtractor.allChanged();
+                    }
+                    *///?} else {
                     if (mc.levelRenderer != null) {
                         mc.levelRenderer.allChanged();
                     }
+                    //?}
                 });
 
         ConfigCategory general = builder.getOrCreateCategory(Component.literal("General"));
@@ -31,6 +37,12 @@ public final class GreedyConfigScreen {
         general.addEntry(entries.startBooleanToggle(Component.literal("Enabled"), draft.enabled)
                 .setDefaultValue(true)
                 .setSaveConsumer(v -> draft.enabled = v)
+                .build());
+
+        general.addEntry(entries.startBooleanToggle(Component.literal("Aggressive Greedy (Absolute)"), draft.aggressiveGreedy)
+                .setDefaultValue(false)
+                .setTooltip(Component.literal("Merge same-block faces into the largest possible quads, ignoring ambient-occlusion boundaries. Fewer quads; slightly coarser lighting on large flat surfaces."))
+                .setSaveConsumer(v -> draft.aggressiveGreedy = v)
                 .build());
 
         general.addEntry(entries.startBooleanToggle(Component.literal("Debug Wireframe"), draft.debugWireframe)

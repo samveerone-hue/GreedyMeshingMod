@@ -1,0 +1,17 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "hi.sierra.greedy_meshing.mixin.client.vulkan",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "VulkanBuildTaskMixin",
+    "VulkanChunkTaskAccessor",
+    "VulkanShaderMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

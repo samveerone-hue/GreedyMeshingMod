@@ -49,6 +49,10 @@ public final class GreedyConfig {
         return data.enabled;
     }
 
+    public static boolean aggressiveGreedy() {
+        return data.aggressiveGreedy;
+    }
+
     public static boolean debugWireframe() {
         return data.debugWireframe;
     }
@@ -68,6 +72,7 @@ public final class GreedyConfig {
     public static Data snapshot() {
         Data copy = new Data();
         copy.enabled = data.enabled;
+        copy.aggressiveGreedy = data.aggressiveGreedy;
         copy.debugWireframe = data.debugWireframe;
         copy.debugComparison = data.debugComparison;
         copy.debugTrianglesHud = data.debugTrianglesHud;
@@ -83,6 +88,10 @@ public final class GreedyConfig {
 
     public static final class Data {
         public boolean enabled = true;
+        /** Merge coplanar faces of the same block regardless of their ambient-occlusion signature,
+         *  producing the largest possible quads ("absolute" greedy). Fewer quads at the cost of
+         *  slightly coarser per-vertex lighting on big merged surfaces. */
+        public boolean aggressiveGreedy = false;
         public boolean debugWireframe = false;
         public boolean debugComparison = false;
         public boolean debugTrianglesHud = false;
