@@ -4,6 +4,7 @@ package hi.sierra.greedy_meshing.mixin.client.vulkan;
 import net.vulkanmod.render.chunk.RenderSection;
 import net.vulkanmod.render.chunk.build.RenderRegion;
 import net.vulkanmod.render.chunk.build.renderer.BlockRenderer;
+import net.vulkanmod.render.chunk.build.renderer.FluidRenderer;
 import net.vulkanmod.render.chunk.build.task.BuildTask;
 import net.vulkanmod.render.chunk.build.thread.BuilderResources;
 import net.vulkanmod.render.chunk.cull.QuadFacing;
@@ -36,7 +37,20 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.level.material.Fluids;
+// Greedy Water is not yet supported on the UNOBFUSCATED (26.x) branch (see
+// GreedyEligibility.isGreedyWaterSource) — the fabric-api fluid-rendering module's jar-in-jar
+// resolution differs there and hasn't been verified.
+//? if UNOBFUSCATED {
+/*
+*///?} else {
+import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandler;
+import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandlerRegistry;
+//?}
+import hi.sierra.greedy_meshing.GreedyConfig;
 import hi.sierra.greedy_meshing.GreedyEligibility;
 import hi.sierra.greedy_meshing.GreedyMesher;
 import hi.sierra.greedy_meshing.client.GreedyDebugStore;
@@ -173,6 +187,66 @@ public abstract class VulkanBuildTaskMixin {
         // Eligible cube captured: SKIP VulkanMod's per-block render — the merged quad replaces it.
     }
 
+    // Water's fluid quads are emitted through builderResources.fluidRenderer.renderLiquid(...), a
+    // code path entirely separate from BlockRenderer.renderBlock above — BlockState.getRenderShape()
+    // for water is INVISIBLE so it never reaches that redirect. Only plain still-water source blocks
+    // that pass GreedyEligibility.isGreedyWaterSource are captured; everything else falls through to
+    // VulkanMod's normal per-block fluid rendering. Not yet wired up on the UNOBFUSCATED (26.x)
+    // branch — see the import guard above and GreedyEligibility.isGreedyWaterSource, which always
+    // returns false there, making this omission a no-op rather than a behavior change.
+    //
+    // NOTE: this redirect + the merge-key/emission logic below are currently dead code on ALL
+    // versions — GreedyEligibility.isGreedyWaterSource also unconditionally returns false whenever
+    // VulkanMod is present (a separate, non-version-gated check), because VulkanMod's per-quad
+    // translucency depth-sort visibly breaks (flickering/disappearing faces, confirmed in-game) when
+    // water is merged into large quads. Left in place rather than deleted in case a future fix (e.g.
+    // capping water sub-quad size to preserve sort granularity) makes this viable — see the
+    // VULKANMOD_PRESENT comment in GreedyEligibility.java for the full explanation.
+    //? if UNOBFUSCATED {
+    /*
+    *///?} else {
+    @Redirect(
+            method = "compile",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/vulkanmod/render/chunk/build/renderer/FluidRenderer;renderLiquid(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/material/FluidState;Lnet/minecraft/core/BlockPos;)V"
+            )
+    )
+    private void greedyMeshing$redirectVulkanRenderLiquid(
+            FluidRenderer renderer,
+            BlockState state,
+            FluidState fluidState,
+            BlockPos pos
+    ) {
+        if (!GreedyRuntimeState.isRuntimeGreedyActive()) {
+            renderer.renderLiquid(state, fluidState, pos);
+            return;
+        }
+
+        GreedyVulkanWorkState work = GREEDY_MESHING$STATE.get();
+        BlockAndTintGetter world = work.world();
+        BlockPos origin = work.sectionOrigin();
+        if (world == null || origin == null || !GreedyEligibility.isGreedyWaterSource(state, world, pos)) {
+            renderer.renderLiquid(state, fluidState, pos);
+            return;
+        }
+
+        int localX = pos.getX() - origin.getX();
+        int localY = pos.getY() - origin.getY();
+        int localZ = pos.getZ() - origin.getZ();
+        if (localX < 0 || localX >= 16 || localY < 0 || localY >= 16 || localZ < 0 || localZ >= 16) {
+            renderer.renderLiquid(state, fluidState, pos);
+            return;
+        }
+
+        int idx = GreedyMesher.index(localX, localY, localZ);
+        if (work.sectionStates()[idx] == null) {
+            work.incrementEligibleCount();
+        }
+        work.sectionStates()[idx] = state;
+    }
+    //?}
+
     /**
      * Right before VulkanMod finalizes its buffers, mesh the captured blocks and emit the result
      * into the SOLID buffer. ordinal = 0 fires before the first {@code end()} in the finalization
@@ -218,6 +292,8 @@ public abstract class VulkanBuildTaskMixin {
         int baseX = origin.getX();
         int baseY = origin.getY();
         int baseZ = origin.getZ();
+        work.scratchLighting.applyDirectionalShade =
+                !GreedyRuntimeState.isInSableSubLevel(baseX >> 4, baseZ >> 4);
         BitSet[] visibleFaces = GREEDY_MESHING$VISIBLE.get();
         long[][] mergeKeys = work.faceMergeKeys();
         populateFaceVisibility(world, work.sectionStates(), visibleFaces, mergeKeys, baseX, baseY, baseZ);
@@ -228,11 +304,12 @@ public abstract class VulkanBuildTaskMixin {
             return;
         }
 
-        // SOLID layer — but VulkanMod compacts render types (e.g. SOLID -> CUTOUT_MIPPED) and only
-        // *begins/uploads* the compacted buffers. Writing to the raw SOLID builder would land in a
+        // SOLID / TRANSLUCENT layer — but VulkanMod compacts render types (e.g. SOLID -> CUTOUT_MIPPED)
+        // and only *begins/uploads* the compacted buffers. Writing to the raw builder would land in a
         // buffer that's never begun or uploaded (=> vertices silently lost). Apply VulkanMod's own
         // remapping, exactly as its emit path does, to hit the buffer that actually gets drawn.
         TerrainBuilder solid = builderResources.builderPack.builder(TerrainRenderType.getRemapped(TerrainRenderType.SOLID));
+        TerrainBuilder translucent = builderResources.builderPack.builder(TerrainRenderType.getRemapped(TerrainRenderType.TRANSLUCENT));
 
         boolean captureDebug = work.captureDebug();
         List<GreedyDebugStore.DebugQuad> debugQuads = captureDebug ? new ArrayList<>(merged.size()) : List.of();
@@ -242,15 +319,16 @@ public abstract class VulkanBuildTaskMixin {
         for (GreedyMesher.GreedyQuad quad : merged) {
             List<FaceAppearance> layers = greedyMeshing$resolveFaceLayers(quad.state(), quad.face());
             int blockFaces = quad.width() * quad.height();
+            TerrainBuilder builder = quad.state().is(Blocks.WATER) ? translucent : solid;
             for (FaceAppearance layer : layers) {
-                emittedQuads += emitMergedQuad(solid, quad,
+                emittedQuads += emitMergedQuad(builder, quad,
                         layer.sprite().getU0(), layer.sprite().getU1(),
                         layer.sprite().getV0(), layer.sprite().getV1(),
                         layer.tinted(), layer.tintIndex(), world, baseX, baseY, baseZ, work);
                 vanillaEquivalent += blockFaces;
             }
             if (captureDebug) {
-                debugQuads.add(greedyMeshing$toDebugQuad(quad, baseX, baseY, baseZ));
+                debugQuads.add(greedyMeshing$toDebugQuad(quad, baseX, baseY, baseZ, world, work.scratchTintPos));
             }
         }
         GreedyPerformanceStats.onGreedySectionBuilt(work.eligibleCount(), merged.size(), emittedQuads, vanillaEquivalent);
@@ -265,6 +343,9 @@ public abstract class VulkanBuildTaskMixin {
 
     @Unique
     private static List<FaceAppearance> greedyMeshing$resolveFaceLayers(BlockState state, Direction face) {
+        if (state.is(Blocks.WATER)) {
+            return greedyMeshing$resolveWaterFaceLayers(state);
+        }
         //? if UNOBFUSCATED {
         /*BlockStateModel model = Minecraft.getInstance().getModelManager().getBlockStateModelSet().get(state);
         RandomSource random = RandomSource.create(0L);
@@ -325,6 +406,32 @@ public abstract class VulkanBuildTaskMixin {
         return layers;
     }
 
+    /**
+     * Water's BlockState.getRenderShape() is INVISIBLE, so it has no real baked model — the
+     * generic greedyMeshing$resolveFaceLayers path above (which looks up a baked model) doesn't
+     * apply. Resolve the still-water sprite via Fabric's fluid-rendering API instead; the world
+     * position doesn't matter here (Fabric's default water handler ignores it when picking the
+     * sprite), only the FluidState, so this is safe to cache per-BlockState like the opaque path.
+     */
+    @Unique
+    private static List<FaceAppearance> greedyMeshing$resolveWaterFaceLayers(BlockState state) {
+        //? if UNOBFUSCATED {
+        /*// Not yet wired up on this branch — see GreedyEligibility.isGreedyWaterSource, which
+        // always returns false here, so this is unreachable rather than a behavior change.
+        return List.of();
+        *///?} else {
+        // Fabric API registers a default handler for vanilla water unconditionally on init, so this
+        // is never actually null in practice — GreedyEligibility.isGreedyWaterSource already gates
+        // out anything that isn't plain Blocks.WATER before this is ever called.
+        FluidRenderHandler handler = FluidRenderHandlerRegistry.INSTANCE.get(Fluids.WATER);
+        if (handler == null) {
+            return List.of();
+        }
+        TextureAtlasSprite sprite = handler.getFluidSprites(null, null, state.getFluidState())[0];
+        return List.of(new FaceAppearance(sprite, true, -1));
+        //?}
+    }
+
     // ------------------------------------------------------------------
     // Face visibility + AO merge keys. Mirrors the Sodium path.
     // ------------------------------------------------------------------
@@ -370,12 +477,67 @@ public abstract class VulkanBuildTaskMixin {
                         /*if (Block.shouldRenderFace(state, world, new BlockPos(worldX, worldY, worldZ), face, samplePos)) {
                         *///?}
                             visibleFaces[face.ordinal()].set(idx);
-                            faceMergeKeys[face.ordinal()][idx] = computeAoKey(world, samplePos, worldX, worldY, worldZ, face);
+                            int mergeKey;
+                            if (state.is(Blocks.WATER)) {
+                                // Water only merges within the interior of a flat, uncovered still-water
+                                // body (see GreedyEligibility.isGreedyWaterSource + isFlatWaterSurface) —
+                                // vanilla renders a sloped, per-corner-averaged surface everywhere else,
+                                // which this mod's flat GreedyQuad rectangles can't represent. The bottom
+                                // face is always an exact flat square regardless of the top surface's
+                                // slope, so it skips the check; every other face (including the sides,
+                                // whose top edge follows the same slope as the top face) needs it.
+                                // Non-flat faces get a unique key so they fall back to individual 1x1
+                                // quads — pixel-identical to un-merged vanilla rendering, never a
+                                // regression.
+                                boolean flat = face == Direction.DOWN
+                                        || isFlatWaterSurface(world, worldX, worldY, worldZ, samplePos);
+                                mergeKey = flat ? 0 : (0x40000000 | idx);
+                            } else {
+                                // Aggressive ("absolute") greedy ignores the AO signature so same-block
+                                // faces merge into the largest possible quads; lighting is still sampled
+                                // per sub-quad.
+                                mergeKey = GreedyConfig.aggressiveGreedy()
+                                        ? 0
+                                        : computeAoKey(world, samplePos, worldX, worldY, worldZ, face);
+                            }
+                            faceMergeKeys[face.ordinal()][idx] = mergeKey;
                         }
                     }
                 }
             }
         }
+    }
+
+    /**
+     * True iff the 3x3 horizontal neighbourhood centered on (worldX, worldY, worldZ) is entirely
+     * uncovered still-water source blocks — the union of the four lattice corners vanilla's own
+     * per-corner height averaging touches for this block's top face. Checking the superset rather
+     * than each corner's exact 2x2 footprint is conservative: a handful of tiles that would actually
+     * render flat get misclassified as non-flat (and simply don't merge), which is acceptable —
+     * this check only ever removes merge opportunities, never approves an incorrect one.
+     */
+    @Unique
+    private static boolean isFlatWaterSurface(
+            BlockAndTintGetter world, int worldX, int worldY, int worldZ, BlockPos.MutableBlockPos scratch
+    ) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                scratch.set(worldX + dx, worldY, worldZ + dz);
+                BlockState neighborState = world.getBlockState(scratch);
+                if (!neighborState.is(Blocks.WATER)) {
+                    return false;
+                }
+                FluidState neighborFluid = neighborState.getFluidState();
+                if (!neighborFluid.isSource() || neighborFluid.getType() != Fluids.WATER) {
+                    return false;
+                }
+                scratch.set(worldX + dx, worldY + 1, worldZ + dz);
+                if (world.getBlockState(scratch).getFluidState().getType() == Fluids.WATER) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     @Unique
@@ -494,10 +656,11 @@ public abstract class VulkanBuildTaskMixin {
         GreedyMesher.GreedyQuad sub = new GreedyMesher.GreedyQuad(face, sx, sy, sz, subW, subH, quad.state());
 
         float[] c = work.scratchCorners;
-        fillCorners(c, sub);
+        BlockPos.MutableBlockPos tintPos = work.scratchTintPos;
+        float top = greedyMeshing$waterSurfaceTop(world, sub, baseX, baseY, baseZ, tintPos);
+        fillCorners(c, sub, top);
 
         BlockColors blockColors = applyTint ? Minecraft.getInstance().getBlockColors() : null;
-        BlockPos.MutableBlockPos tintPos = work.scratchTintPos;
         GreedyLighting.Scratch lighting = work.scratchLighting;
         int[][] cb = work.scratchCornerBlocks;
         cornerBlockPositionsInto(sub, baseX, baseY, baseZ, cb);
@@ -595,6 +758,18 @@ public abstract class VulkanBuildTaskMixin {
             BlockPos.MutableBlockPos samplePos, BlockColors blockColors, int tintIndex
     ) {
         samplePos.set(worldX, worldY, worldZ);
+        if (state.is(Blocks.WATER)) {
+            //? if UNOBFUSCATED {
+            /*// Not yet wired up on this branch — see GreedyEligibility.isGreedyWaterSource, which
+            // always returns false here, so this is unreachable rather than a behavior change.
+            return 0xFFFFFF;
+            *///?} else {
+            // Water's biome tint is applied by the fluid renderer directly (BiomeColors.getAverageWaterColor),
+            // not through the generic BlockColors registry the rest of this method uses.
+            FluidRenderHandler handler = FluidRenderHandlerRegistry.INSTANCE.get(Fluids.WATER);
+            return handler != null ? handler.getFluidColor(world, samplePos, state.getFluidState()) : 0xFFFFFF;
+            //?}
+        }
         //? if UNOBFUSCATED {
         /*int tint = blockColors.getTintSource(state, tintIndex).colorInWorld(state, world, samplePos);
         *///?} else {
@@ -607,10 +782,12 @@ public abstract class VulkanBuildTaskMixin {
      *  wireframe overlay. Uses the same corner layout as the emit path so the outline matches. */
     @Unique
     private static GreedyDebugStore.DebugQuad greedyMeshing$toDebugQuad(
-            GreedyMesher.GreedyQuad quad, int baseX, int baseY, int baseZ
+            GreedyMesher.GreedyQuad quad, int baseX, int baseY, int baseZ,
+            BlockAndTintGetter world, BlockPos.MutableBlockPos scratch
     ) {
         float[] c = new float[12];
-        fillCorners(c, quad);
+        float top = greedyMeshing$waterSurfaceTop(world, quad, baseX, baseY, baseZ, scratch);
+        fillCorners(c, quad, top);
         return new GreedyDebugStore.DebugQuad(
                 c[0] + baseX, c[1] + baseY, c[2] + baseZ,
                 c[3] + baseX, c[4] + baseY, c[5] + baseZ,
@@ -619,16 +796,41 @@ public abstract class VulkanBuildTaskMixin {
         );
     }
 
+    /**
+     * The height of a water quad's top edge: a full block (1.0) for every non-water quad AND for
+     * water that has more water directly above it (an internal boundary, not a real surface — vanilla
+     * renders these at full height too, see LiquidBlockRenderer.getHeight's "covered" branch). Only a
+     * water block genuinely exposed to something other than water above uses its own (usually ~0.889)
+     * exposed-surface height. Must be checked per quad, NOT inferred from `state.is(Blocks.WATER)`
+     * alone — a submerged water block still has BlockState water/LEVEL=0 like a surface block, so
+     * blindly shrinking every water quad left a ~0.11-block gap at every internal layer boundary in
+     * water deeper than 1 block (issue: merged water quads left gaps in multi-layer-deep water).
+     */
     @Unique
-    private static void fillCorners(float[] out, GreedyMesher.GreedyQuad quad) {
+    private static float greedyMeshing$waterSurfaceTop(
+            BlockAndTintGetter world, GreedyMesher.GreedyQuad quad, int baseX, int baseY, int baseZ,
+            BlockPos.MutableBlockPos scratch
+    ) {
+        if (!quad.state().is(Blocks.WATER)) {
+            return 1.0f;
+        }
+        scratch.set(baseX + quad.x(), baseY + quad.y() + 1, baseZ + quad.z());
+        if (world.getBlockState(scratch).getFluidState().getType() == Fluids.WATER) {
+            return 1.0f;
+        }
+        return quad.state().getFluidState().getOwnHeight();
+    }
+
+    @Unique
+    private static void fillCorners(float[] out, GreedyMesher.GreedyQuad quad, float top) {
         float x0 = quad.x(), y0 = quad.y(), z0 = quad.z();
         switch (quad.face()) {
-            case NORTH -> { float x1 = x0 + quad.width(), y1 = y0 + quad.height(); out[0]=x1; out[1]=y0; out[2]=z0; out[3]=x0; out[4]=y0; out[5]=z0; out[6]=x0; out[7]=y1; out[8]=z0; out[9]=x1; out[10]=y1; out[11]=z0; }
-            case SOUTH -> { float x1 = x0 + quad.width(), y1 = y0 + quad.height(), z1 = z0 + 1; out[0]=x0; out[1]=y0; out[2]=z1; out[3]=x1; out[4]=y0; out[5]=z1; out[6]=x1; out[7]=y1; out[8]=z1; out[9]=x0; out[10]=y1; out[11]=z1; }
-            case WEST -> { float y1 = y0 + quad.height(), z1 = z0 + quad.width(); out[0]=x0; out[1]=y0; out[2]=z0; out[3]=x0; out[4]=y0; out[5]=z1; out[6]=x0; out[7]=y1; out[8]=z1; out[9]=x0; out[10]=y1; out[11]=z0; }
-            case EAST -> { float x1 = x0 + 1, y1 = y0 + quad.height(), z1 = z0 + quad.width(); out[0]=x1; out[1]=y0; out[2]=z1; out[3]=x1; out[4]=y0; out[5]=z0; out[6]=x1; out[7]=y1; out[8]=z0; out[9]=x1; out[10]=y1; out[11]=z1; }
+            case NORTH -> { float x1 = x0 + quad.width(), y1 = y0 + quad.height() - 1 + top; out[0]=x1; out[1]=y0; out[2]=z0; out[3]=x0; out[4]=y0; out[5]=z0; out[6]=x0; out[7]=y1; out[8]=z0; out[9]=x1; out[10]=y1; out[11]=z0; }
+            case SOUTH -> { float x1 = x0 + quad.width(), y1 = y0 + quad.height() - 1 + top, z1 = z0 + 1; out[0]=x0; out[1]=y0; out[2]=z1; out[3]=x1; out[4]=y0; out[5]=z1; out[6]=x1; out[7]=y1; out[8]=z1; out[9]=x0; out[10]=y1; out[11]=z1; }
+            case WEST -> { float y1 = y0 + quad.height() - 1 + top, z1 = z0 + quad.width(); out[0]=x0; out[1]=y0; out[2]=z0; out[3]=x0; out[4]=y0; out[5]=z1; out[6]=x0; out[7]=y1; out[8]=z1; out[9]=x0; out[10]=y1; out[11]=z0; }
+            case EAST -> { float x1 = x0 + 1, y1 = y0 + quad.height() - 1 + top, z1 = z0 + quad.width(); out[0]=x1; out[1]=y0; out[2]=z1; out[3]=x1; out[4]=y0; out[5]=z0; out[6]=x1; out[7]=y1; out[8]=z0; out[9]=x1; out[10]=y1; out[11]=z1; }
             case DOWN -> { float x1 = x0 + quad.width(), z1 = z0 + quad.height(); out[0]=x0; out[1]=y0; out[2]=z0; out[3]=x1; out[4]=y0; out[5]=z0; out[6]=x1; out[7]=y0; out[8]=z1; out[9]=x0; out[10]=y0; out[11]=z1; }
-            case UP -> { float x1 = x0 + quad.width(), y1 = y0 + 1, z1 = z0 + quad.height(); out[0]=x0; out[1]=y1; out[2]=z1; out[3]=x1; out[4]=y1; out[5]=z1; out[6]=x1; out[7]=y1; out[8]=z0; out[9]=x0; out[10]=y1; out[11]=z0; }
+            case UP -> { float x1 = x0 + quad.width(), y1 = y0 + top, z1 = z0 + quad.height(); out[0]=x0; out[1]=y1; out[2]=z1; out[3]=x1; out[4]=y1; out[5]=z1; out[6]=x1; out[7]=y1; out[8]=z0; out[9]=x0; out[10]=y1; out[11]=z0; }
         }
     }
 

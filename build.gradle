@@ -12,6 +12,22 @@ def isUnobfuscated = findProperty('deps.unobfuscated') == 'true'
 def useMojmap = findProperty('deps.use_mojmap') == 'true'
 def targetJavaVersion = Integer.parseInt(findProperty('deps.java_version') ?: '21')
 
+// Dev-environment renderer switch: -Prenderer=sodium, -Prenderer=vulkanmod, or -Prenderer=vanilla
+// picks which one actually loads at runtime. Unset preserves the old default (VulkanMod wins if
+// configured for this version, else Sodium if configured, else vanilla). "vanilla" forces BOTH
+// Sodium and VulkanMod off the runtime classpath, regardless of what's configured for this
+// version. Both renderers' mixin configs are already "required": false / defaultRequire 0 (see
+// greedy_meshing.sodium.mixins.json / greedy_meshing.vulkan.mixins.json), so whichever one isn't
+// on the runtime classpath is silently skipped — this only changes which jar is actually loaded,
+// not which mixin classes compile.
+// Usage in IntelliJ: create Gradle run configurations for the same "<version>:runClient" task, one
+// per Program/VM argument ("-Prenderer=sodium" / "-Prenderer=vulkanmod" / "-Prenderer=vanilla"),
+// then just pick whichever to run — no manual gradle.properties editing needed.
+def forceRenderer = findProperty('renderer')?.toString()?.trim()?.toLowerCase()
+if (forceRenderer && !(forceRenderer in ['sodium', 'vulkanmod', 'vanilla'])) {
+    throw new GradleException("Unknown -Prenderer value '${forceRenderer}' — expected 'sodium', 'vulkanmod', or 'vanilla'")
+}
+
 // 26.1 uses net.fabricmc.fabric-loom (no remapping), older uses fabric-loom
 if (isUnobfuscated) {
     apply plugin: 'net.fabricmc.fabric-loom'
@@ -66,15 +82,21 @@ dependencies {
         def vulkanmodVersion = findProperty('deps.vulkanmod')
         def sodiumVersion = findProperty('deps.sodium')
         def sodiumMaven = findProperty('deps.sodium_maven') ?: 'caffeinemc'
+        // "vanilla" forces both off; unset falls back to the old default (VulkanMod wins if
+        // configured, else Sodium if configured).
+        def wantSodiumAtRuntime = forceRenderer == 'sodium'
+                || (forceRenderer == null && !vulkanmodVersion)
+        def wantVulkanAtRuntime = forceRenderer == 'vulkanmod'
+                || (forceRenderer == null && vulkanmodVersion)
         if (sodiumVersion) {
             def sodiumDep = sodiumMaven == 'modrinth'
                     ? "maven.modrinth:sodium:${sodiumVersion}"
                     : "net.caffeinemc:sodium-fabric:${sodiumVersion}"
             // Sodium is needed at compile time (the Sodium mixins reference its classes), but
             // VulkanMod and Sodium are mutually exclusive renderers — keep Sodium off the runtime
-            // when VulkanMod is active for this version.
+            // when VulkanMod is active for this version, unless -Prenderer overrides it.
             compileOnly sodiumDep
-            if (!vulkanmodVersion) {
+            if (wantSodiumAtRuntime) {
                 runtimeOnly sodiumDep
             }
         }
@@ -85,6 +107,8 @@ dependencies {
             compileOnly("maven.modrinth:vulkanmod:${vulkanmodVersion}") {
                 transitive = false
             }
+        }
+        if (vulkanmodVersion && wantVulkanAtRuntime) {
             runtimeOnly("maven.modrinth:vulkanmod:${vulkanmodVersion}") {
                 transitive = false
             }
@@ -124,6 +148,12 @@ dependencies {
         def vulkanmodVersion = findProperty('deps.vulkanmod')
         def sodiumVersion = findProperty('deps.sodium')
         def sodiumMaven = findProperty('deps.sodium_maven') ?: 'caffeinemc'
+        // "vanilla" forces both off; unset falls back to the old default (VulkanMod wins if
+        // configured, else Sodium if configured).
+        def wantSodiumAtRuntime = forceRenderer == 'sodium'
+                || (forceRenderer == null && !vulkanmodVersion)
+        def wantVulkanAtRuntime = forceRenderer == 'vulkanmod'
+                || (forceRenderer == null && vulkanmodVersion)
         if (sodiumVersion) {
             def sodiumDep = sodiumMaven == 'modrinth'
                     ? "maven.modrinth:sodium:${sodiumVersion}"
@@ -131,8 +161,9 @@ dependencies {
             // Sodium is always needed at compile time (the Sodium mixins reference its classes).
             modCompileOnly sodiumDep
             // ...but Sodium and VulkanMod are mutually exclusive renderers and refuse to load
-            // together, so keep Sodium off the runtime when testing the VulkanMod path.
-            if (!vulkanmodVersion) {
+            // together, so keep Sodium off the runtime when testing the VulkanMod path, unless
+            // -Prenderer overrides it (see the forceRenderer comment above).
+            if (wantSodiumAtRuntime) {
                 modRuntimeOnly sodiumDep
             }
         }
@@ -145,6 +176,8 @@ dependencies {
             modCompileOnly("maven.modrinth:vulkanmod:${vulkanmodVersion}") {
                 transitive = false
             }
+        }
+        if (vulkanmodVersion && wantVulkanAtRuntime) {
             modLocalRuntime("maven.modrinth:vulkanmod:${vulkanmodVersion}") {
                 transitive = false
             }

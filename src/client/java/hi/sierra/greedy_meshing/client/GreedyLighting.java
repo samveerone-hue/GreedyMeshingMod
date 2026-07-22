@@ -9,6 +9,7 @@ import net.minecraft.core.Direction;
 *///?} else {
 import net.minecraft.world.level.BlockAndTintGetter;
 //?}
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.Arrays;
@@ -33,7 +34,12 @@ public final class GreedyLighting {
             int worldZ,
             Scratch scratch
     ) {
-        if (!useSmoothLighting(state)) {
+        // Water never gets vanilla's opaque-block 4-corner AO blending — that path samples
+        // neighbor occlusion (isViewBlocking/getLightBlock) and diagonal corners assuming solid-cube
+        // semantics that don't apply to a merged fluid surface, and was never exercised by this mod
+        // for fluids before (only opaque blocks used it). Flat per-face lighting matches how vanilla
+        // actually lights water (no per-corner AO) and sidesteps that entirely-untested-for-water path.
+        if (!useSmoothLighting(state) || state.is(Blocks.WATER)) {
             fillFlatLighting(world, face, worldX, worldY, worldZ, scratch);
             return;
         }
@@ -243,9 +249,9 @@ public final class GreedyLighting {
         }
 
         //? if UNOBFUSCATED {
-        /*float shade = world.cardinalLighting().byFace(face);
+        /*float shade = scratch.applyDirectionalShade ? world.cardinalLighting().byFace(face) : 1.0f;
         *///?} else {
-        float shade = world.getShade(face, true);
+        float shade = world.getShade(face, scratch.applyDirectionalShade);
         //?}
         scratch.brightness[0] = c1 * shade;
         scratch.brightness[1] = c2 * shade;
@@ -276,9 +282,9 @@ public final class GreedyLighting {
         BlockState cornerState = world.getBlockState(samplePos);
         int packedLight = greedyMeshing$getLightColor(world, cornerState, samplePos);
         //? if UNOBFUSCATED {
-        /*float shade = world.cardinalLighting().byFace(face);
+        /*float shade = scratch.applyDirectionalShade ? world.cardinalLighting().byFace(face) : 1.0f;
         *///?} else {
-        float shade = world.getShade(face, true);
+        float shade = world.getShade(face, scratch.applyDirectionalShade);
         //?}
         scratch.brightness[cornerIndex] = shade;
         scratch.lightmap[cornerIndex] = packedLight;
@@ -305,9 +311,9 @@ public final class GreedyLighting {
         BlockState faceState = world.getBlockState(samplePos);
         int packedLight = greedyMeshing$getLightColor(world, faceState, samplePos);
         //? if UNOBFUSCATED {
-        /*float shade = world.cardinalLighting().byFace(face);
+        /*float shade = scratch.applyDirectionalShade ? world.cardinalLighting().byFace(face) : 1.0f;
         *///?} else {
-        float shade = world.getShade(face, true);
+        float shade = world.getShade(face, scratch.applyDirectionalShade);
         //?}
         Arrays.fill(scratch.brightness, shade);
         Arrays.fill(scratch.lightmap, packedLight);
@@ -352,5 +358,8 @@ public final class GreedyLighting {
         public final BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
         public final float[] brightness = new float[4];
         public final int[] lightmap = new int[4];
+        // Set once per section build. False inside a Sable sub-level, whose own shader applies
+        // directional shading dynamically — baking ours in on top would double it (issue #4).
+        public boolean applyDirectionalShade = true;
     }
 }

@@ -11,6 +11,10 @@ public final class GreedyRuntimeState {
     private static Method irisIsShaderPackInUse;
     private static boolean irisChecked;
 
+    private static Object sableCompanionInstance;
+    private static Method sableGetContaining;
+    private static boolean sableChecked;
+
     private GreedyRuntimeState() {
     }
 
@@ -36,6 +40,40 @@ public final class GreedyRuntimeState {
             Object instance = irisGetInstance.invoke(null);
             return (boolean) irisIsShaderPackInUse.invoke(instance);
         } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * True when the given chunk (section x/z) lies inside a Sable sub-level's plot grid.
+     * Sable applies its own dynamic directional shading to sub-level geometry (built without
+     * baked shading), so our own {@code world.getShade} on top of that double-darkens it (issue #4).
+     * Soft dependency via reflection on sable-companion — a fixed API published specifically
+     * for optional third-party mod compatibility, with a safe no-op fallback when Sable is absent.
+     */
+    public static boolean isInSableSubLevel(int chunkX, int chunkZ) {
+        if (!sableChecked) {
+            sableChecked = true;
+            try {
+                Class<?> api = Class.forName("dev.ryanhcode.sable.companion.SableCompanion");
+                sableCompanionInstance = api.getField("INSTANCE").get(null);
+                sableGetContaining = api.getMethod("getContaining",
+                        net.minecraft.world.level.Level.class, int.class, int.class);
+            } catch (Throwable ignored) {
+                sableCompanionInstance = null;
+                sableGetContaining = null;
+            }
+        }
+        if (sableGetContaining == null) {
+            return false;
+        }
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.level == null) {
+                return false;
+            }
+            return sableGetContaining.invoke(sableCompanionInstance, mc.level, chunkX, chunkZ) != null;
+        } catch (Throwable ignored) {
             return false;
         }
     }

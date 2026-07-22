@@ -53,6 +53,10 @@ public final class GreedyConfig {
         return data.aggressiveGreedy;
     }
 
+    public static boolean greedyWater() {
+        return data.greedyWater;
+    }
+
     public static boolean debugWireframe() {
         return data.debugWireframe;
     }
@@ -73,6 +77,7 @@ public final class GreedyConfig {
         Data copy = new Data();
         copy.enabled = data.enabled;
         copy.aggressiveGreedy = data.aggressiveGreedy;
+        copy.greedyWater = data.greedyWater;
         copy.debugWireframe = data.debugWireframe;
         copy.debugComparison = data.debugComparison;
         copy.debugTrianglesHud = data.debugTrianglesHud;
@@ -92,6 +97,12 @@ public final class GreedyConfig {
          *  producing the largest possible quads ("absolute" greedy). Fewer quads at the cost of
          *  slightly coarser per-vertex lighting on big merged surfaces. */
         public boolean aggressiveGreedy = false;
+        /** Merge flat interior-lake/ocean still-water top, side, and bottom faces into larger quads,
+         *  the same way solid blocks are merged. Only applies where the water surface is provably
+         *  flat (no slope) — shorelines and flowing water always fall back to normal per-block
+         *  rendering, so this never changes how non-flat water looks. No effect on VulkanMod (its
+         *  per-quad translucency depth-sort breaks visibly when water is merged into large quads). */
+        public boolean greedyWater = false;
         public boolean debugWireframe = false;
         public boolean debugComparison = false;
         public boolean debugTrianglesHud = false;

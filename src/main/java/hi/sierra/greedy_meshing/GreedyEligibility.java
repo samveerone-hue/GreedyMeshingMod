@@ -7,6 +7,8 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.level.material.Fluids;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -51,6 +53,17 @@ public final class GreedyEligibility {
         return false;
     }
 
+    /**
+     * VulkanMod depth-sorts translucent geometry per emitted quad (one sort-order point per quad,
+     * re-sorted as the camera moves — see {@code QuadSorter}), with no equivalent to Sodium's
+     * {@code TranslucentGeometryCollector}. Merging water into large quads collapses many blocks'
+     * worth of independent sort points into one, which visibly breaks back-to-front ordering against
+     * neighbouring geometry as the camera moves (confirmed in-game: merged water faces flicker/
+     * disappear on VulkanMod). Shrinking merged quads back down to avoid this would remove basically
+     * all the benefit of merging water in the first place, so greedy water is soft-disabled here.
+     */
+    private static final boolean VULKANMOD_PRESENT = FabricLoader.getInstance().isModLoaded("vulkanmod");
+
     public static boolean isGreedyOpaqueCube(BlockState state, BlockGetter level, BlockPos pos) {
         Boolean cached = CACHE.get(state);
         if (cached != null) {
@@ -69,6 +82,30 @@ public final class GreedyEligibility {
                 && !(FANCY_GRASS_MOD_PRESENT && FANCY_GRASS_BLOCKS.contains(state.getBlock()));
         CACHE.put(state, result);
         return result;
+    }
+
+    /**
+     * True for plain still-water source blocks when the "Greedy Water" option is on. Deliberately
+     * excludes waterlogged blocks (stairs, kelp, sea pickles, etc.) — those keep rendering their
+     * water layer through the normal per-block fluid path — and flowing water, which this method
+     * can't tell apart from a source block's own slope (that distinction is left to the per-face
+     * flatness check each mixin runs before merging).
+     */
+    public static boolean isGreedyWaterSource(BlockState state, BlockGetter level, BlockPos pos) {
+        //? if UNOBFUSCATED {
+        /*// Not yet supported on this branch: BlockRenderDispatcher's package and the fabric-api
+        // fluid-rendering module's jar-in-jar resolution both differ here and haven't been verified.
+        return false;
+        *///?} else {
+        if (!GreedyConfig.greedyWater() || VULKANMOD_PRESENT) {
+            return false;
+        }
+        if (!state.is(Blocks.WATER)) {
+            return false;
+        }
+        FluidState fluid = state.getFluidState();
+        return fluid.isSource() && fluid.getType() == Fluids.WATER;
+        //?}
     }
 
     /** Clear the eligibility cache (e.g. on resource reload). */

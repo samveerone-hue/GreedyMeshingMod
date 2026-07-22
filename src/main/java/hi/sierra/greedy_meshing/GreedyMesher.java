@@ -2,6 +2,8 @@ package hi.sierra.greedy_meshing;
 
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -15,6 +17,8 @@ public final class GreedyMesher {
     public static final int SECTION_SIZE = 16;
     private static final int TOTAL_BLOCKS = SECTION_SIZE * SECTION_SIZE * SECTION_SIZE;
     private static final Direction[] ALL_FACES = Direction.values();
+    private static final Logger LOGGER = LoggerFactory.getLogger("greedy_meshing");
+    private static volatile boolean capWarned = false;
 
     /**
      * Pre-computed lookup: for each face direction and each plane depth,
@@ -270,7 +274,16 @@ public final class GreedyMesher {
                             if (keys[g] == ck) { gid = g; break; }
                         }
                         if (gid == -1) {
-                            if (nGroups >= BinarySweepState.CAP) break;
+                            if (nGroups >= BinarySweepState.CAP) {
+                                if (!capWarned) {
+                                    capWarned = true;
+                                    LOGGER.warn("Greedy Meshing: hit BinarySweepState.CAP ({}) distinct merge-key groups "
+                                            + "in one depth-slice (face={}, depth={}) — remaining faces in this slice were "
+                                            + "dropped (not merged, not emitted). This warning only prints once.",
+                                            BinarySweepState.CAP, dir, depth);
+                                }
+                                break;
+                            }
                             gid = nGroups++;
                             keys[gid] = ck;
                             origins[gid] = bi;
