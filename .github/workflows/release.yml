@@ -116,7 +116,7 @@ jobs:
                 \"game_versions\": [\"${mc_ver}\"],
                 \"version_type\": \"release\",
                 \"loaders\": [\"fabric\"],
-                \"featured\": true,
+                \"featured\": $([ "$ver" = "26.2" ] && echo true || echo false),
                 \"environment\": \"client_only\",
                 \"changelog\": \"See the full changelog: https://github.com/programmer1o1/GreedyMeshingMod/releases/tag/v${VERSION}\",
                 \"project_id\": \"yOnoFrVo\",
