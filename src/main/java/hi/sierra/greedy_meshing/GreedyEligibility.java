@@ -64,6 +64,16 @@ public final class GreedyEligibility {
      */
     private static final boolean VULKANMOD_PRESENT = FabricLoader.getInstance().isModLoaded("vulkanmod");
 
+    //? if UNOBFUSCATED {
+    /*public static final boolean GREEDY_WATER_SUPPORTED = false;
+    public static final String GREEDY_WATER_UNSUPPORTED_TOOLTIP = "Not supported yet on this Minecraft version.";
+    *///?} else {
+    public static final boolean GREEDY_WATER_SUPPORTED = !VULKANMOD_PRESENT;
+    public static final String GREEDY_WATER_UNSUPPORTED_TOOLTIP = VULKANMOD_PRESENT
+            ? "Not supported on VulkanMod: translucency depth-sort breaks with large merged water quads."
+            : null;
+    //?}
+
     public static boolean isGreedyOpaqueCube(BlockState state, BlockGetter level, BlockPos pos) {
         Boolean cached = CACHE.get(state);
         if (cached != null) {

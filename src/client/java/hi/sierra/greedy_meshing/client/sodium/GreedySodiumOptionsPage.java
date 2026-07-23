@@ -6,7 +6,9 @@ import net.caffeinemc.mods.sodium.client.gui.options.OptionFlag;
 import net.caffeinemc.mods.sodium.client.gui.options.OptionGroup;
 import net.caffeinemc.mods.sodium.client.gui.options.OptionImpl;
 import net.caffeinemc.mods.sodium.client.gui.options.OptionPage;
+import net.caffeinemc.mods.sodium.client.gui.options.control.SliderControl;
 import net.caffeinemc.mods.sodium.client.gui.options.control.TickBoxControl;
+import net.caffeinemc.mods.sodium.client.gui.options.control.ControlValueFormatter;
 import net.caffeinemc.mods.sodium.client.gui.options.storage.OptionStorage;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.network.chat.Component;
@@ -35,7 +37,9 @@ public final class GreedySodiumOptionsPage {
             }
         };
 
-        OptionGroup group = OptionGroup.createBuilder()
+        boolean greedyWaterUnsupported = FabricLoader.getInstance().isModLoaded("vulkanmod");
+
+        OptionGroup general = OptionGroup.createBuilder()
                 .add(OptionImpl.<GreedyConfig.Data, Boolean>createBuilder(Boolean.class, storage)
                         .setName(Component.literal("Enabled"))
                         .setTooltip(Component.literal("Enable greedy meshing. When off, vanilla chunk rendering is used."))
@@ -52,17 +56,46 @@ public final class GreedySodiumOptionsPage {
                         .build())
                 .add(OptionImpl.<GreedyConfig.Data, Boolean>createBuilder(Boolean.class, storage)
                         .setName(Component.literal("Greedy Water (Flat Surfaces)"))
-                        .setTooltip(FabricLoader.getInstance().isModLoaded("vulkanmod")
+                        .setTooltip(greedyWaterUnsupported
                                 ? Component.literal("Not supported on VulkanMod: translucency depth-sort breaks with large merged water quads.")
                                 : Component.literal("Merge flat still-water faces into larger quads. EXPERIMENTAL — some surfaces may render with missing or black faces."))
                         .setBinding((d, v) -> d.greedyWater = v, d -> d.greedyWater)
                         .setControl(TickBoxControl::new)
-                        .setEnabled(() -> !FabricLoader.getInstance().isModLoaded("vulkanmod"))
+                        .setEnabled(() -> !greedyWaterUnsupported)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())
                 .build();
 
-        return new OptionPage(Component.literal("Greedy Meshing"), ImmutableList.of(group));
+        OptionGroup debug = OptionGroup.createBuilder()
+                .add(OptionImpl.<GreedyConfig.Data, Boolean>createBuilder(Boolean.class, storage)
+                        .setName(Component.literal("Debug Wireframe"))
+                        .setTooltip(Component.literal("Render a wireframe overlay showing merged quad boundaries."))
+                        .setBinding((d, v) -> d.debugWireframe = v, d -> d.debugWireframe)
+                        .setControl(TickBoxControl::new)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build())
+                .add(OptionImpl.<GreedyConfig.Data, Boolean>createBuilder(Boolean.class, storage)
+                        .setName(Component.literal("Debug Comparison (Split-Screen)"))
+                        .setTooltip(Component.literal("Split-screen: left half greedy meshing, right half vanilla."))
+                        .setBinding((d, v) -> d.debugComparison = v, d -> d.debugComparison)
+                        .setControl(TickBoxControl::new)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build())
+                .add(OptionImpl.<GreedyConfig.Data, Boolean>createBuilder(Boolean.class, storage)
+                        .setName(Component.literal("Debug Triangles (Overlay)"))
+                        .setTooltip(Component.literal("Show a HUD overlay with triangle/quad count statistics."))
+                        .setBinding((d, v) -> d.debugTrianglesHud = v, d -> d.debugTrianglesHud)
+                        .setControl(TickBoxControl::new)
+                        .build())
+                .add(OptionImpl.<GreedyConfig.Data, Integer>createBuilder(Integer.class, storage)
+                        .setName(Component.literal("Wireframe Opacity"))
+                        .setTooltip(Component.literal("Opacity of the debug wireframe overlay (0–100%)."))
+                        .setBinding((d, v) -> d.meshOpacity = v / 100.0f, d -> Math.round(d.meshOpacity * 100))
+                        .setControl(opt -> new SliderControl(opt, 0, 100, 1, ControlValueFormatter.percentage()))
+                        .build())
+                .build();
+
+        return new OptionPage(Component.literal("Greedy Meshing"), ImmutableList.of(general, debug));
     }
 }
 //?}
