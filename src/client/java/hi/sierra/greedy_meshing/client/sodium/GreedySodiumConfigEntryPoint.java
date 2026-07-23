@@ -25,6 +25,7 @@ public final class GreedySodiumConfigEntryPoint implements ConfigEntryPoint {
         page.addOption(builder.createBooleanOption(Identifier.fromNamespaceAndPath("greedy_meshing", "enabled"))
                 .setName(Component.literal("Enabled"))
                 .setTooltip(Component.literal("Enable greedy meshing. When off, the mod does nothing and vanilla chunk rendering is used."))
+                .setDefaultValue(true)
                 .setBinding(v -> draft[0].enabled = v, () -> draft[0].enabled)
                 .setStorageHandler(storage)
                 .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD));
@@ -32,6 +33,7 @@ public final class GreedySodiumConfigEntryPoint implements ConfigEntryPoint {
         page.addOption(builder.createBooleanOption(Identifier.fromNamespaceAndPath("greedy_meshing", "aggressive_greedy"))
                 .setName(Component.literal("Aggressive Greedy (Absolute)"))
                 .setTooltip(Component.literal("Merge same-block faces ignoring AO boundaries. Fewer quads; slightly coarser lighting on large flat surfaces."))
+                .setDefaultValue(false)
                 .setBinding(v -> draft[0].aggressiveGreedy = v, () -> draft[0].aggressiveGreedy)
                 .setStorageHandler(storage)
                 .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD));
@@ -42,6 +44,7 @@ public final class GreedySodiumConfigEntryPoint implements ConfigEntryPoint {
                 .setTooltip(greedyWaterUnsupported
                         ? Component.literal("Not supported on VulkanMod: translucency depth-sort breaks with large merged water quads.")
                         : Component.literal("Merge flat still-water faces into larger quads (open ocean/lake interiors). EXPERIMENTAL — some surfaces may render with missing or black faces."))
+                .setDefaultValue(false)
                 .setBinding(v -> draft[0].greedyWater = v, () -> draft[0].greedyWater)
                 .setStorageHandler(storage)
                 .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
