@@ -24,6 +24,9 @@
     ],
     "modmenu": [
       "hi.sierra.greedy_meshing.client.GreedyModMenuIntegration"
+    ],
+    "sodium:config_api_user": [
+      "hi.sierra.greedy_meshing.client.sodium.GreedySodiumConfigEntryPoint"
     ]
   },
   "mixins": [
@@ -43,7 +46,10 @@
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric-api": "*",
-    "minecraft": "${minecraft_version}",
-    "cloth-config": "*"
+    "minecraft": "${minecraft_version}"
+  },
+  "suggests": {
+    "cloth-config": "*",
+    "modmenu": "*"
   }
 }

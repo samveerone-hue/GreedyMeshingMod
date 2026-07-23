@@ -5,9 +5,11 @@ A client-side Fabric optimization mod that merges identical adjacent block faces
 ## Features
 - Automatic merging of opaque full-cube block faces
 - Custom terrain shaders for correct texture tiling on merged faces
-- **Aggressive Greedy (Absolute)** option. Itw merges across ambient-occlusion boundaries for even fewer quads, at the cost of slightly coarser lighting
+- **Aggressive Greedy (Absolute)** option. It merges across ambient-occlusion boundaries for even fewer quads, at the cost of slightly coarser lighting
+- **Greedy Water** option (experimental). Merges flat still-water surfaces (open oceans, lake interiors) into larger quads. Shorelines and flowing water are unaffected. Not supported on VulkanMod
 - [Sodium](https://modrinth.com/mod/sodium) compatible
-- [VulkanMod](https://modrinth.com/mod/vulkanmod) compatible (1.21-1.21.5, 1.21.9-1.21.11, 26.1-26.1.2 1.21.6-1.21.8 not available, VulkanMod was never released for those)
+- [VulkanMod](https://modrinth.com/mod/vulkanmod) compatible (1.21-1.21.5, 1.21.9-1.21.11, 26.1-26.1.2; 1.21.6-1.21.8 not available, VulkanMod was never released for those)
+- [Sable](https://modrinth.com/mod/sable) compatible — sub-level geometry no longer double-darkens with greedy meshing on
 - Works with Minecraft 26.2's native experimental Vulkan rendering backend
 - Debug wireframe and split-screen comparison mode
 - In-game config screen (requires [Cloth Config](https://modrinth.com/mod/cloth-config) + [Mod Menu](https://modrinth.com/mod/modmenu))
@@ -23,9 +25,9 @@ A client-side Fabric optimization mod that merges identical adjacent block faces
 Performance gains vary depending on your hardware and world. If your GPU is already underutilized (high FPS), the improvement may be minimal. The mod benefits most on lower-end GPUs, higher render distances, and worlds with large flat surfaces of the same block type (e.g. superflat, underground caves, large builds).
 
 ## Known Limitations
-- **Experimental** - some mods that modify chunk rendering or terrain shaders may be incompatible. Disable via config if issues occur.
 - **Shader packs** (Iris/OptiFine) are not fully supported. The mod falls back to face-culling-only mode.
 - **Lighting** on large merged surfaces may look slightly different from vanilla.
+- **Greedy Water** is experimental — some water surfaces may render with missing or black faces on Sodium. The root cause is not yet identified. Disable Greedy Water if you see this.
 
 ## Credits
 Fork of [Greedy Meshing](https://modrinth.com/mod/greedy-meshing) by BuggiestStudios, with significant modifications including multi-version support (via [Stonecutter](https://github.com/stonecutter-versioning/stonecutter)), binary meshing.

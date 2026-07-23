@@ -4,6 +4,7 @@
   "package": "hi.sierra.greedy_meshing.mixin.client.sodium",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "SodiumOptionsGUIMixin",
     "SodiumChunkBuilderMeshingTaskMixin",
     "SodiumChunkBuilderTaskAccessor",
     "SodiumChunkBuildContextAccessor",
