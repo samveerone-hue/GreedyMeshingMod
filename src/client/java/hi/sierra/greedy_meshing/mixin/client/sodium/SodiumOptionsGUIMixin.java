@@ -22,4 +22,8 @@ public abstract class SodiumOptionsGUIMixin {
         pages.add(GreedySodiumOptionsPage.create());
     }
 }
+//? } else {
+public class SodiumOptionsGUIMixin {
+    // No-op on Sodium 0.8+ (1.21.11+): config is registered via the sodium:config_api_user entrypoint instead.
+}
 //?}
